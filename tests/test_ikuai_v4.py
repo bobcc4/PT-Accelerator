@@ -10,18 +10,27 @@ from app.services.ikuai_v4_service import IkuaiV4Service, create_ikuai_service
 @pytest.fixture
 def router():
     records, writes = [], []
-    state = {"fail_read": False, "fail_write": False, "page_size": 100}
+    state = {"fail_read": False, "fail_write": False, "pagination": "page", "reads": []}
 
     def handle(request):
         assert request.headers["Authorization"] == "Bearer test-token"
         assert request.url.path.startswith(IkuaiV4Service.RULES)
         if request.method == "GET":
+            state["reads"].append(dict(request.url.params))
             if state["fail_read"]:
                 return httpx.Response(200, json={"code": 3007})
             page = int(request.url.params.get("page", 1))
             start = (page - 1) * 100
+            if state["pagination"] == "limit_only":
+                batch = records[:int(request.url.params.get("limit", 20))]
+            elif state["pagination"] == "capped":
+                batch = records[:20]
+            elif state["pagination"] == "empty_second" and page > 1:
+                batch = []
+            else:
+                batch = records[start:start + 100]
             return httpx.Response(200, json={"code": 0, "results": {
-                "data": records[start:start + 100], "total": len(records)}})
+                "data": batch, "total": len(records)}})
         writes.append(request.method)
         if state["fail_write"]:
             return httpx.Response(200, json={"code": 3001})
@@ -62,6 +71,41 @@ def test_all_pages_are_read(router):
     service, records, _, _ = router
     records.extend({"id": i} for i in range(205))
     assert len(service.get_dns_records()) == 205
+
+
+def test_firmware_default_twenty_rows_uses_numeric_limit(router):
+    service, records, _, state = router
+    state["pagination"] = "limit_only"
+    records.extend({"id": i} for i in range(33))
+    assert len(service.get_dns_records()) == 33
+    assert state["reads"] == [{"page": "1", "page_size": "100", "limit": "100"}]
+
+
+def test_ignored_page_parameter_retries_full_snapshot(router):
+    service, records, _, state = router
+    state["pagination"] = "limit_only"
+    records.extend({"id": i} for i in range(205))
+    actual = service.get_dns_records()
+    assert len(actual) == len({r["id"] for r in actual}) == 205
+    assert state["reads"][-1] == {"limit": "205"}
+
+
+def test_incomplete_repeated_pages_abort_sync_without_writes(router):
+    service, records, writes, state = router
+    state["pagination"] = "capped"
+    records.extend({"id": i} for i in range(33))
+    assert not service.sync_hosts_to_dns([{"domain": "a.test", "ip": "192.0.2.1"}])
+    assert writes == []
+    assert "分页" in service.last_sync_error
+    assert len(state["reads"]) == 3
+
+
+def test_unexpected_empty_page_does_not_claim_complete_read(router):
+    service, records, _, state = router
+    state["pagination"] = "empty_second"
+    records.extend({"id": i} for i in range(205))
+    with pytest.raises(ValueError, match="读取不完整"):
+        service.get_dns_records()
 
 
 def test_read_failure_aborts_without_writes(router):

@@ -14,6 +14,11 @@ from app.utils.secret_crypto import encrypt_secret, decrypt_secret
 router = APIRouter(tags=["爱快DNS"])
 
 
+def _sync_failure_message(service: IkuaiService) -> str:
+    detail = getattr(service, "last_sync_error", "")
+    return f"同步失败：{detail}" if isinstance(detail, str) and detail else "同步失败，请检查爱快路由器连接"
+
+
 def _remove_config_key(data: dict[str, Any], key: str) -> None:
     """删除点号路径配置键。"""
     keys = key.split(".")
@@ -175,7 +180,7 @@ def sync_dns(hosts: list[dict], session: dict = Depends(verify_session), _csrf: 
     if success:
         return {"success": True, "message": f"成功同步 {len(hosts)} 条记录"}
     else:
-        return {"success": False, "message": "同步失败，请检查爱快路由器连接"}
+        return {"success": False, "message": _sync_failure_message(service)}
 
 
 @router.post("/sync-now")
@@ -231,7 +236,7 @@ def sync_now(session: dict = Depends(verify_session), _csrf: None = Depends(veri
                 "records": cf_hosts,
             }
         else:
-            return {"success": False, "message": "同步失败，请检查爱快路由器连接"}
+            return {"success": False, "message": _sync_failure_message(service)}
     except Exception as e:
         return {"success": False, "message": f"同步出错：{e}"}
 

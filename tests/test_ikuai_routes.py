@@ -69,6 +69,20 @@ def test_read_error_is_not_empty_success(settings):
     factory.return_value.close.assert_called_once()
 
 
+def test_immediate_sync_returns_specific_failure_reason(settings, monkeypatch):
+    from app.services.cfst_service import cfst_service
+
+    _, factory = settings
+    service = factory.return_value
+    service.sync_hosts_to_dns.return_value = False
+    service.last_sync_error = "爱快 DNS 接口未返回完整规则，请检查固件的分页支持"
+    monkeypatch.setattr(cfst_service, "get_cached_results", lambda: {"https://a.test/announce": "192.0.2.1"})
+    result = ikuai.sync_now()
+    assert not result["success"]
+    assert service.last_sync_error in result["message"]
+    service.close.assert_called_once()
+
+
 def test_automatic_pipeline_uses_decrypted_v4_credentials(settings, monkeypatch):
     from app.pipelines import hosts_pipeline
 
