@@ -56,6 +56,9 @@ export interface CfstFormState {
 }
 
 export interface IkuaiDnsFormState {
+  api_version: "legacy" | "v4";
+  token: string;
+  verify_tls: boolean;
   enable: boolean;
   url: string;
   username: string;

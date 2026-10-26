@@ -334,6 +334,9 @@ DEFAULT_CONFIG: dict = {
         },
     },
     "ikuai": {
+        "api_version": "legacy",
+        "token": "",
+        "verify_tls": True,
         "enabled": False,
         "host": "",
         "port": 80,

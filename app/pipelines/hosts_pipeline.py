@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 from app.config import config
 from app.services.hosts_service import HostsService
 from app.services.ikuai_service import IkuaiService
+from app.services.ikuai_v4_service import create_ikuai_service
+from app.utils.secret_crypto import decrypt_secret
 from app.services.notify_service import build_structured_notification, notify_service
 from app.utils.logger import get_logger
 
@@ -43,12 +45,14 @@ class HostsPipeline:
         if not config.get("ikuai.enabled", False):
             return None
 
-        service = IkuaiService()
-        service.init_config(
+        service = create_ikuai_service(
             host=config.get("ikuai.host", ""),
             port=None,
             username=config.get("ikuai.username", "admin"),
-            password=config.get("ikuai.password", ""),
+            password=decrypt_secret(config.get("ikuai.password", "")),
+            api_version=config.get("ikuai.api_version", "legacy"),
+            token=decrypt_secret(config.get("ikuai.token", "")),
+            verify_tls=config.get("ikuai.verify_tls", True),
         )
         return service if service.is_enabled else None
 
